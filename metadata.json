@@ -1,0 +1,6 @@
+{
+  "name": "Quản lý Thi đua Liên đội - TH&THCS Phước Hiệp",
+  "description": "Hệ thống quản lý thi đua học đường, chấm chéo cờ đỏ, bảng điểm 31 lớp, tự động tính điểm và đồng bộ Google Sheets cho Liên đội trường TH&THCS Phước Hiệp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
