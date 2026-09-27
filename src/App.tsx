@@ -93,6 +93,22 @@ export default function App() {
     localStorage.setItem('phuoc_hiep_sheets_config', JSON.stringify(sheetsConfig));
   }, [sheetsConfig]);
 
+  // Tự động kéo dữ liệu online từ Google Sheets khi mở ứng dụng (nếu đã lưu URL Web App)
+  useEffect(() => {
+    if (sheetsConfig.webAppUrl && sheetsConfig.webAppUrl.trim().includes('/exec')) {
+      import('./services/googleSheetsService').then(({ fetchOnlineData }) => {
+        fetchOnlineData(sheetsConfig.webAppUrl).then((result) => {
+          if (result.success && result.data?.logs && result.data.logs.length > 0) {
+            console.log(`Đã tự động nạp ${result.data.logs.length} biên bản từ Google Sheets.`);
+            setLogs(result.data.logs);
+          }
+        }).catch((err) => {
+          console.warn('Lỗi tự động đọc dữ liệu Google Sheets khi khởi động:', err);
+        });
+      });
+    }
+  }, []);
+
   // Recalculate scores for selected week whenever classes or logs change
   const currentScores = useMemo(() => {
     return calculateScoresForWeek(classes, logs, selectedWeek);
@@ -105,6 +121,13 @@ export default function App() {
   // Handlers
   const handleSaveLogs = (newLogs: ViolationLog[]) => {
     setLogs((prev) => [...newLogs, ...prev]);
+
+    // Tự động gửi biên bản mới lên Google Sheets nếu đã cấu hình Web App URL
+    if (sheetsConfig.webAppUrl && sheetsConfig.webAppUrl.trim().includes('/exec')) {
+      import('./services/googleSheetsService').then(({ appendLogsToGoogleSheets }) => {
+        appendLogsToGoogleSheets(sheetsConfig.webAppUrl, newLogs);
+      });
+    }
   };
 
   const handleAppealLog = (logId: string, reason: string) => {
@@ -114,16 +137,30 @@ export default function App() {
   };
 
   const handleResolveAppeal = (logId: string, approve: boolean, responseNote: string) => {
-    setLogs((prev) =>
-      prev.map((l) => {
+    setLogs((prev) => {
+      const updated = prev.map((l) => {
         if (l.id !== logId) return l;
         return {
           ...l,
-          status: approve ? 'rejected' : 'approved', // If approved appeal -> reject penalty (points restored)
+          status: approve ? ('rejected' as const) : ('approved' as const), // If approved appeal -> reject penalty (points restored)
           appealResponse: responseNote,
         };
-      })
-    );
+      });
+
+      // Tự động đồng bộ lên Google Sheets khi duyệt khiếu nại
+      if (sheetsConfig.webAppUrl && sheetsConfig.webAppUrl.trim().includes('/exec')) {
+        import('./services/googleSheetsService').then(({ pushDataToGoogleSheets }) => {
+          pushDataToGoogleSheets(sheetsConfig.webAppUrl, {
+            weekScores: currentScores,
+            logs: updated,
+            selectedWeek,
+            syncAllWeeks: true,
+          });
+        });
+      }
+
+      return updated;
+    });
   };
 
   const handleAddCriteria = (newCr: CriteriaItem) => {
@@ -167,10 +204,14 @@ export default function App() {
         onToggleLock={() => setIsLocked(!isLocked)}
         onOpenAI={handleTriggerAI}
         onOpenPrint={() => setIsPrintOpen(true)}
-        onOpenSheets={() => setAdminView('sheets')}
+        onOpenSheets={() => {
+          setCurrentRole('admin');
+          setAdminView('sheets');
+        }}
         onOpenNewViolation={() => setIsNewViolationOpen(true)}
         onOpenApiKeySettings={() => setIsApiKeyOpen(true)}
         hasApiKey={hasApiKey}
+        hasSheetsConfig={Boolean(sheetsConfig.webAppUrl && sheetsConfig.webAppUrl.trim())}
       />
 
       {/* Main Container */}
@@ -257,6 +298,7 @@ export default function App() {
             scores={currentScores}
             logs={logs}
             selectedWeek={selectedWeek}
+            onImportLogs={(importedLogs) => setLogs(importedLogs)}
           />
         )}
 
